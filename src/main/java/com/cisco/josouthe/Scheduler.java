@@ -8,13 +8,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class Scheduler extends Thread {
     private static final String THREAD_NAME = "AppDynamics Transaction Cleaner Thread";
-    ArrayList<ConcurrentHashMap<String, TransactionDictionary>> maps = new ArrayList<>();
+    ArrayList<ConcurrentHashMap<Object, TransactionDetail>> maps = new ArrayList<>();
     long sleepTime = 30000;
     long ageToDiscard = 120000;
     private static Scheduler instance = null;
     private ISDKLogger logger;
 
-    public synchronized static Scheduler getInstance(long sleepTimeMS, long ageToDiscardMS, ConcurrentHashMap<String, TransactionDictionary> concurrentHashMap, ISDKLogger logger) {
+    public synchronized static Scheduler getInstance(long sleepTimeMS, long ageToDiscardMS, ConcurrentHashMap<Object, TransactionDetail> concurrentHashMap, ISDKLogger logger) {
         boolean start = false;
         if( instance == null ) {
             logger.debug(String.format("Scheduler Singleton for $s is being created", THREAD_NAME));
@@ -23,9 +23,13 @@ public class Scheduler extends Thread {
         }
         if( sleepTimeMS > 30000 ) instance.sleepTime = sleepTimeMS; //safety check, we aren't going faster than this
         if( ageToDiscardMS < instance.ageToDiscard ) instance.ageToDiscard = ageToDiscardMS; //safety check, we aren't keeping longer than this
-        instance.maps.add(concurrentHashMap);
+        instance.addMap(concurrentHashMap);
         if( start ) instance.start();
         return instance;
+    }
+
+    public void addMap( ConcurrentHashMap<Object, TransactionDetail> concurrentHashMap) {
+        instance.maps.add(concurrentHashMap);
     }
 
     private Scheduler( ISDKLogger logger ) {
@@ -53,14 +57,14 @@ public class Scheduler extends Thread {
     @Override
     public void run() {
         while(true) {
-            for( ConcurrentHashMap<String, TransactionDictionary> map : maps ) {
-                long now = new Date().getTime();
+            for( ConcurrentHashMap<Object, TransactionDetail> map : maps ) {
+                long now = System.currentTimeMillis();
                 long numTransactions = map.size();
                 long numRemoved = 0;
-                for (TransactionDictionary transactionDictionary : map.values()) {
-                    if( transactionDictionary.isFinished() || now > (transactionDictionary.getLastTouchTime() + ageToDiscard) ) {
+                for (TransactionDetail transaction : map.values()) {
+                    if( transaction.isFinished() || now > (transaction.getLastTouchTime() + ageToDiscard) ) {
                         numRemoved++;
-                        map.remove( transactionDictionary.getKey() );
+                        map.remove( transaction.getKey() );
                     }
                 }
                 logger.debug(String.format("Scheduler examined map:%s with %d map entries and removed %d stale or completed transaction segments", map.toString(), numTransactions, numRemoved));
