@@ -35,9 +35,9 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
     public List<Rule> initializeRules() {
         List<Rule> rules = new ArrayList<Rule>();
 
-        rules.add( new Rule.Builder("com.ericsson.bss.rm.charging.access.runtime.transhandling.impl.InternalTransaction")
-                .classMatchType(SDKClassMatchType.IMPLEMENTS_INTERFACE)
-                .methodMatchString("<init>")
+        rules.add( new Rule.Builder("com.ericsson.bss.rm.charging.access.runtime.transhandling.impl.MasterTransactionImpl")
+                .classMatchType(SDKClassMatchType.MATCHES_CLASS)
+                .methodMatchString("begin")
                 .methodStringMatchType(SDKStringMatchType.EQUALS)
                 .build()
         );
@@ -57,7 +57,7 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
         Transaction transaction = AppdynamicsAgent.getTransaction(); //naively grab an active BT on this thread, we expect this to be noop
 
         switch(methodName) {
-            case "<init>": { //during init, constructor, we assume a BT is running, if not we start one, and then mark a handoff on this new object
+            case "begin": { //during init, constructor, we assume a BT is running, if not we start one, and then mark a handoff on this new object
                 if( isFakeTransaction(transaction) ) { //this is a noop transaction, so we need to start a BT, one is not already running
                     transaction = AppdynamicsAgent.startTransaction("Transaction-placeholder", null, EntryTypes.POJO, true); //placeholder, we should try and configure a servlet bt for this transaction
                     getLogger().debug(String.format("Business Transaction was not running Transaction-placeholder(%s) started for %s.%s()", transaction.getUniqueIdentifier(), className, methodName));
@@ -105,7 +105,7 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
             transaction.markAsError(exception.toString());
         }
         switch (methodName) {
-            case "<init>": {
+            case "begin": {
                 //nothing to do here, yet
             }
             case "run": {
