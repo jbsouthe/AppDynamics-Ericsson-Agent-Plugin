@@ -57,27 +57,7 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
         Transaction transaction = AppdynamicsAgent.getTransaction(); //naively grab an active BT on this thread, we expect this to be noop
 
         switch(methodName) {
-            case "<init>": { //during init, constructor, we assume a BT is running, if not we start one, and then mark a handoff on this new object
-                if( isFakeTransaction(transaction) ) { //this is a noop transaction, so we need to start a BT, one is not already running
-                    transaction = AppdynamicsAgent.startTransaction("Transaction-placeholder", null, EntryTypes.POJO, true); //placeholder, we should try and configure a servlet bt for this transaction
-                    getLogger().debug(String.format("Business Transaction was not running Transaction-placeholder(%s) started for %s.%s()", transaction.getUniqueIdentifier(), className, methodName));
-                }
-
-                if( isFakeTransaction(transaction) ) { //if the BT is still not started/real, we need to log it and abandon
-                    getLogger().debug(String.format("Business Transaction is not running and could not be started for %s.%s()", className, methodName));
-                    return null;
-                }
-                transaction.markHandoff(objectIntercepted); //this lets the agent know that we are handing off a segment to another thread of execution, which is what dispatch does sooner or later
-                getLogger().debug(String.format("Transaction markHandoff initiated for guid: '%s' isAsync Flag: %s Common Object: %s", transaction.getUniqueIdentifier(), transaction.isAsyncTransaction(), objectIntercepted));
-
-                transaction = AppdynamicsAgent.startSegment(objectIntercepted); //start a Segment of the BT that marked this object for handoff earlier
-
-                if (isFakeTransaction(transaction)) { //this object was not marked for handoff? log it
-                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was not marked for handoff? %s %s.%s()", objectIntercepted, className, methodName));
-                } else { //this is what we hope for, and means we are starting a segment of a BT after an async handoff
-                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was marked for handoff! %s transaction segment guid: %s, %s %s.%s()",  objectIntercepted, transaction.getUniqueIdentifier(), objectIntercepted, className, methodName));
-                }
-                transactionsMap.put(objectIntercepted, new TransactionDetail(objectIntercepted));
+            case "<init>": {  //nothing to do here, moved the meat of this to after the constructor is finished being constructed.
                 break;
             }
             case "run": { //once start method is executed, we begin processing this coroutine, so we want to start the segment here and store it for the callback on finish
@@ -105,8 +85,27 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
             transaction.markAsError(exception.toString());
         }
         switch (methodName) {
-            case "<init>": {
-                //nothing to do here, yet
+            case "<init>": { //during init, constructor, we assume a BT is running, if not we start one, and then mark a handoff on this new object
+                if( isFakeTransaction(transaction) ) { //this is a noop transaction, so we need to start a BT, one is not already running
+                    transaction = AppdynamicsAgent.startTransaction("Transaction-placeholder", null, EntryTypes.POJO, true); //placeholder, we should try and configure a servlet bt for this transaction
+                    getLogger().debug(String.format("Business Transaction was not running Transaction-placeholder(%s) started for %s.%s()", transaction.getUniqueIdentifier(), className, methodName));
+                }
+
+                if( isFakeTransaction(transaction) ) { //if the BT is still not started/real, we need to log it and abandon
+                    getLogger().debug(String.format("Business Transaction is not running and could not be started for %s.%s()", className, methodName));
+                    return;
+                }
+                transaction.markHandoff(objectIntercepted); //this lets the agent know that we are handing off a segment to another thread of execution, which is what dispatch does sooner or later
+                getLogger().debug(String.format("Transaction markHandoff initiated for guid: '%s' isAsync Flag: %s Common Object: %s", transaction.getUniqueIdentifier(), transaction.isAsyncTransaction(), objectIntercepted));
+
+                transaction = AppdynamicsAgent.startSegment(objectIntercepted); //start a Segment of the BT that marked this object for handoff earlier
+
+                if (isFakeTransaction(transaction)) { //this object was not marked for handoff? log it
+                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was not marked for handoff? %s %s.%s()", objectIntercepted, className, methodName));
+                } else { //this is what we hope for, and means we are starting a segment of a BT after an async handoff
+                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was marked for handoff! %s transaction segment guid: %s, %s %s.%s()",  objectIntercepted, transaction.getUniqueIdentifier(), objectIntercepted, className, methodName));
+                }
+                transactionsMap.put(objectIntercepted, new TransactionDetail(objectIntercepted));
             }
             case "run": {
                 transaction.endSegment();
