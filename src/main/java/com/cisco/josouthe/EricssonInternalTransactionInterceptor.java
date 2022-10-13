@@ -53,7 +53,7 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
 
     @Override
     public Object onMethodBegin(Object objectIntercepted, String className, String methodName, Object[] params) {
-        getLogger().debug(String.format("onMethodBegin starting for %s %s.%s()", objectIntercepted.toString(), className, methodName));
+        getLogger().debug(String.format("onMethodBegin starting %s.%s()", className, methodName));
         Transaction transaction = AppdynamicsAgent.getTransaction(); //naively grab an active BT on this thread, we expect this to be noop
 
         switch(methodName) {
