@@ -16,11 +16,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javax.swing.TransferHandler.TransferSupport;
+
 public class EricssonInternalTransactionInterceptor extends AGenericInterceptor {
     private static final ConcurrentHashMap<Object, TransactionDetail> transactionsMap = new ConcurrentHashMap<>();
     private final Scheduler scheduler;
     private final HashSet<DataScope> snapshotDatascopeOnly;
     private IReflector getFQId;
+    private IReflector transactionState;
+    private String FIRST = "com.ericsson.bss.rm.charging.access.runtime.activity.impl.definitions.AbstractInitialActivity";
 
     public EricssonInternalTransactionInterceptor() {
         super();
@@ -29,6 +33,8 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
         scheduler = Scheduler.getInstance(10000L, 60000L, transactionsMap, getLogger());
 
         getFQId = getNewReflectionBuilder().invokeInstanceMethod( "getFQId", true).build();
+        transactionState = getNewReflectionBuilder().accessFieldValue("myState", true).build();
+
     }
 
     @Override
@@ -37,43 +43,78 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
 
         rules.add( new Rule.Builder("com.ericsson.bss.rm.charging.access.runtime.transhandling.impl.InternalTransaction")
                 .classMatchType(SDKClassMatchType.IMPLEMENTS_INTERFACE)
-                .methodMatchString("<init>")
+                .methodMatchString("enqueue")
                 .methodStringMatchType(SDKStringMatchType.EQUALS)
                 .build()
         );
 
-        rules.add( new Rule.Builder("com.ericsson.bss.rm.charging.access.runtime.transhandling.impl.InternalTransaction")
+        rules.add( new Rule.Builder("com.ericsson.bss.rm.charging.access.runtime.transhandling.service.Activity")
                 .classMatchType(SDKClassMatchType.IMPLEMENTS_INTERFACE)
-                .methodMatchString("run")
+                .methodMatchString("process")
                 .methodStringMatchType(SDKStringMatchType.EQUALS)
                 .build()
         );
+
         return rules;
     }
 
     @Override
     public Object onMethodBegin(Object objectIntercepted, String className, String methodName, Object[] params) {
-        getLogger().debug(String.format("onMethodBegin starting %s.%s()", className, methodName));
-        Transaction transaction = AppdynamicsAgent.getTransaction(); //naively grab an active BT on this thread, we expect this to be noop
+        if (params.length == 0)
+            getLogger().debug(String.format("onMethodBegin for %s.%s()", className, methodName));
+        else if (params.length == 1)
+            getLogger().debug(String.format("onMethodBegin for %s.%s() %s", className, methodName, params[0]));
+
+        Transaction transaction = null;
 
         switch(methodName) {
-            case "<init>": {  //nothing to do here, moved the meat of this to after the constructor is finished being constructed.
+            case "enqueue": { //during init, constructor, we assume a BT is running, if not we start one, and then mark a handoff on this new object
+                transaction = AppdynamicsAgent.getTransaction(); //naively grab an active BT on this thread, we expect this to NOT be noop
+
+                if( isFakeTransaction(transaction) ) { //this is a noop transaction, so we need to start a BT, one is not already running
+                    transaction = AppdynamicsAgent.startTransaction("Transaction-placeholder", null, EntryTypes.POJO, true); //placeholder, we should try and configure a servlet bt for this transaction
+                    getLogger().debug(String.format("Business Transaction was not running Transaction-placeholder(%s) started for %s.%s()", transaction.getUniqueIdentifier(), className, methodName));
+                }
+
+                if( isFakeTransaction(transaction) ) { //if the BT is still not started/real, we need to log it and abandon
+                    getLogger().debug(String.format("Business Transaction is not running and could not be started for %s.%s()", className, methodName));
+                    return null;
+                }
+
+                Object myState = getReflectiveObject(objectIntercepted, transactionState);
+
+                transaction.collectData("TransactionState", String.valueOf(myState), snapshotDatascopeOnly);
+                //transaction.markHandoff(objectIntercepted); //this lets the agent know that we are handing off a segment to another thread of execution, which is what dispatch does sooner or later
+                getLogger().debug(String.format("Transaction markHandoff initiated for guid: '%s' isAsync Flag: %s Common Object: %s", transaction.getUniqueIdentifier(), transaction.isAsyncTransaction(), objectIntercepted));
+                transactionsMap.put(objectIntercepted, new TransactionDetail(objectIntercepted, transaction.getUniqueIdentifier()));
                 break;
             }
-            case "run": { //once start method is executed, we begin processing this coroutine, so we want to start the segment here and store it for the callback on finish
+            case "process": { //once start method is executed, we begin processing this coroutine, so we want to start the segment here and store it for the callback on finish
+                getLogger().debug(String.format("onMethodBegin starting for %s %s.%s()", params[0].toString(), className, methodName));
+                // transaction = AppdynamicsAgent.startSegment(params[0]); //start a Segment of the BT that marked this object for handoff earlier
 
-                transaction = AppdynamicsAgent.startSegment(objectIntercepted); //start a Segment of the BT that marked this object for handoff earlier
-                String fqid = getReflectiveString(objectIntercepted, getFQId, "FQID-UNKNOWN");
-                transaction.collectData("FQId", fqid, this.snapshotDatascopeOnly);
+                TransactionDetail transactionDetail = transactionsMap.get(params[0]);
+                if( transactionDetail == null ) {
+                    getLogger().info(String.format("WARNING: no transaction found in map for %s", params[0]));
+                } else {
+                    transaction = AppdynamicsAgent.startSegmentNoHandoff(transactionDetail.getBtGuid());
+                }
+
                 if (isFakeTransaction(transaction)) { //this object was not marked for handoff? log it
-                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was not marked for handoff? %s %s.%s()", objectIntercepted, className, methodName));
+                    getLogger().debug(String.format("WARNING: We intercepted an implementation of an %s that was NOT marked for handoff? %s %s.%s()", params[0], className, methodName));
                 } else { //this is what we hope for, and means we are starting a segment of a BT after an async handoff
-                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was marked for handoff! transaction segment guid: %s, %s %s.%s()", transaction.getUniqueIdentifier(), objectIntercepted, className, methodName));
+                    getLogger().debug(String.format("We intercepted an implementation of an %s that was marked for handoff! transaction segment guid: %s, %s %s.%s()", transaction.getUniqueIdentifier(), params[0], className, methodName));
+
+                    String fqid = getReflectiveString(params[0], getFQId, "FQID-UNKNOWN");
+                    Object myState = getReflectiveObject(params[0], transactionState);
+
+                    transaction.collectData("TransactionState", String.valueOf(myState), snapshotDatascopeOnly);
+                    transaction.collectData("FQId", fqid, this.snapshotDatascopeOnly);    
                 }
                 break;
             }
         }
-        getLogger().debug(String.format("onMethodBegin ending for %s.%s()", className, methodName));
+        getLogger().debug(String.format("onMethodBegin done for %s %s.%s()", transaction, className, methodName));
         return transaction;
     }
 
@@ -84,39 +125,25 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
         if( exception != null ) {
             transaction.markAsError(exception.toString());
         }
+        if (params.length == 0)
+            getLogger().debug(String.format("onMethodEnd for %s %s %s.%s()", state, objectIntercepted.toString(), className, methodName));
+        else if (params.length == 1)
+            getLogger().debug(String.format("onMethodEnd for %s %s %s.%s() %s", state, objectIntercepted.toString(), className, methodName, params[0]));
+
         switch (methodName) {
-            case "<init>": { //during init, constructor, we assume a BT is running, if not we start one, and then mark a handoff on this new object
-                if( isFakeTransaction(transaction) ) { //this is a noop transaction, so we need to start a BT, one is not already running
-                    transaction = AppdynamicsAgent.startTransaction("Transaction-placeholder", null, EntryTypes.POJO, true); //placeholder, we should try and configure a servlet bt for this transaction
-                    getLogger().debug(String.format("Business Transaction was not running Transaction-placeholder(%s) started for %s.%s()", transaction.getUniqueIdentifier(), className, methodName));
-                }
-
-                if( isFakeTransaction(transaction) ) { //if the BT is still not started/real, we need to log it and abandon
-                    getLogger().debug(String.format("Business Transaction is not running and could not be started for %s.%s()", className, methodName));
-                    return;
-                }
-                transaction.markHandoff(objectIntercepted); //this lets the agent know that we are handing off a segment to another thread of execution, which is what dispatch does sooner or later
-                getLogger().debug(String.format("Transaction markHandoff initiated for guid: '%s' isAsync Flag: %s Common Object: %s", transaction.getUniqueIdentifier(), transaction.isAsyncTransaction(), objectIntercepted));
-
-                transaction = AppdynamicsAgent.startSegment(objectIntercepted); //start a Segment of the BT that marked this object for handoff earlier
-
-                if (isFakeTransaction(transaction)) { //this object was not marked for handoff? log it
-                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was not marked for handoff? %s %s.%s()", objectIntercepted, className, methodName));
-                } else { //this is what we hope for, and means we are starting a segment of a BT after an async handoff
-                    getLogger().debug(String.format("We intercepted an implementation of an InternalTransaction that was marked for handoff! %s transaction segment guid: %s, %s %s.%s()",  objectIntercepted, transaction.getUniqueIdentifier(), objectIntercepted, className, methodName));
-                }
-                transactionsMap.put(objectIntercepted, new TransactionDetail(objectIntercepted));
-            }
-            case "run": {
+            case "process": {
                 transaction.endSegment();
-                TransactionDetail transactionDetail = transactionsMap.get(objectIntercepted);
+                TransactionDetail transactionDetail = transactionsMap.get(params[0]);
                 if( transactionDetail != null ) {
                     transactionDetail.setFinished(true);
                 }
-                getLogger().debug(String.format("Made it to the end of an entire segment, and ended it"));
+                getLogger().debug(String.format("onMethodEnd Made it to the end of an entire segment, and ended it %s.%s()", className, methodName));
                 break;
             }
+            case "enqueue": //nothing to do here.
+                break;
         }
+        getLogger().debug(String.format("onMethodEnd done for %s.%s()", className, methodName));
     }
 
     protected boolean isFakeTransaction(Transaction transaction) {
@@ -158,7 +185,10 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
 
     protected Object getReflectiveObject(Object object, IReflector method, Object... args) {
         Object value = null;
-        if( object == null || method == null ) return value;
+        if( object == null || method == null )
+        {
+            return value;
+        }
         try{
             if( args.length > 0 ) {
                 value = method.execute(object.getClass().getClassLoader(), object, args);

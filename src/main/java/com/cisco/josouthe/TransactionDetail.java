@@ -2,11 +2,21 @@ package com.cisco.josouthe;
 
 public class TransactionDetail {
     private Object key;
+    private String btGuid;
     private long lastTouchTime;
     private boolean finished=false;
 
-    public TransactionDetail(Object key) {
+    public TransactionDetail(Object key, String uniqueIdentifier) {
         setKey(key);
+        setBtGuid(uniqueIdentifier);
+    }
+
+    public String getBtGuid() {
+        return btGuid;
+    }
+
+    public void setBtGuid(String btGuid) {
+        this.btGuid = btGuid;
     }
 
     public Object getKey() {
