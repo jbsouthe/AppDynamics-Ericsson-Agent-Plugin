@@ -19,8 +19,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.TransferHandler.TransferSupport;
 
 public class EricssonInternalTransactionInterceptor extends AGenericInterceptor {
-    private static final ConcurrentHashMap<Object, TransactionDetail> transactionsMap = new ConcurrentHashMap<>();
-    private final Scheduler scheduler;
     private final HashSet<DataScope> snapshotDatascopeOnly;
     private IReflector getFQId;
     private IReflector transactionState;
@@ -30,7 +28,6 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
         super();
         snapshotDatascopeOnly = new HashSet<DataScope>();
         snapshotDatascopeOnly.add(DataScope.SNAPSHOTS);
-        scheduler = Scheduler.getInstance(10000L, 60000L, transactionsMap, getLogger());
 
         getFQId = getNewReflectionBuilder().invokeInstanceMethod( "getFQId", true).build();
         transactionState = getNewReflectionBuilder().accessFieldValue("myState", true).build();
@@ -84,21 +81,14 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
                 Object myState = getReflectiveObject(objectIntercepted, transactionState);
 
                 transaction.collectData("TransactionState", String.valueOf(myState), snapshotDatascopeOnly);
-                //transaction.markHandoff(objectIntercepted); //this lets the agent know that we are handing off a segment to another thread of execution, which is what dispatch does sooner or later
+                transaction.markHandoff(objectIntercepted); //this lets the agent know that we are handing off a segment to another thread of execution, which is what dispatch does sooner or later
                 getLogger().debug(String.format("Transaction markHandoff initiated for guid: '%s' isAsync Flag: %s Common Object: %s", transaction.getUniqueIdentifier(), transaction.isAsyncTransaction(), objectIntercepted));
-                transactionsMap.put(objectIntercepted, new TransactionDetail(objectIntercepted, transaction.getUniqueIdentifier()));
                 break;
             }
             case "process": { //once start method is executed, we begin processing this coroutine, so we want to start the segment here and store it for the callback on finish
                 getLogger().debug(String.format("onMethodBegin starting for %s %s.%s()", params[0].toString(), className, methodName));
-                // transaction = AppdynamicsAgent.startSegment(params[0]); //start a Segment of the BT that marked this object for handoff earlier
+                transaction = AppdynamicsAgent.startSegment(params[0]); //start a Segment of the BT that marked this object for handoff earlier
 
-                TransactionDetail transactionDetail = transactionsMap.get(params[0]);
-                if( transactionDetail == null ) {
-                    getLogger().info(String.format("WARNING: no transaction found in map for %s", params[0]));
-                } else {
-                    transaction = AppdynamicsAgent.startSegmentNoHandoff(transactionDetail.getBtGuid());
-                }
 
                 if (isFakeTransaction(transaction)) { //this object was not marked for handoff? log it
                     getLogger().debug(String.format("WARNING: We intercepted an implementation of an %s that was NOT marked for handoff? %s %s.%s()", params[0], className, methodName));
@@ -133,10 +123,6 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
         switch (methodName) {
             case "process": {
                 transaction.endSegment();
-                TransactionDetail transactionDetail = transactionsMap.get(params[0]);
-                if( transactionDetail != null ) {
-                    transactionDetail.setFinished(true);
-                }
                 getLogger().debug(String.format("onMethodEnd Made it to the end of an entire segment, and ended it %s.%s()", className, methodName));
                 break;
             }
