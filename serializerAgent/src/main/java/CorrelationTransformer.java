@@ -11,7 +11,7 @@ public class CorrelationTransformer implements ClassFileTransformer {
     public CorrelationTransformer( String white, String black ) {
         whiteList = new ArrayList<>();
         blackList = new ArrayList<>();
-
+        whiteList.add("com.ericsson.bss.rm.charging.routing.schemas.generated.RoutingMsg");
         if( white != null ) for( String s : white.split(",") ) whiteList.add(s);
         if( black != null ) for( String s : black.split(",") ) blackList.add(s);
     }
@@ -28,11 +28,13 @@ public class CorrelationTransformer implements ClassFileTransformer {
             //initialize javassist
             ClassPool cp = ClassPool.getDefault();
             CtClass clazz = cp.get(className);
+            /* //pulling this conditional out, because the class we are targeting is not serializable
             boolean isSerializable = false;
             for( CtClass inter: clazz.getInterfaces() ) {
                 if( inter.getName().equals("java.io.Serializable") ) isSerializable=true;
             }
             if( !isSerializable ) return classfileBuffer;
+             */
 
             CtField field = new CtField(cp.get("java.lang.String"), "appDynamicsCustomCorrelationString", clazz);
             field.setModifiers( Modifier.PRIVATE );
