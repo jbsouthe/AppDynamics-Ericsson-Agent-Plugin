@@ -16,6 +16,7 @@ public class RoutingMsgEntryDecorator extends AEntry {
 
     public RoutingMsgEntryDecorator() {
         super();
+        getLogger().info(String.format("Initializing %s, version %s, author %s, build date: %s", this.getClass().getCanonicalName(), MetaData.VERSION, MetaData.GECOS, MetaData.BUILDTIMESTAMP));
 
         readIndex = getNewReflectionBuilder().invokeInstanceMethod("readIndex", true).build(); //Integer if!=1 then no data left to read
         readString = getNewReflectionBuilder().invokeInstanceMethod("readString", true).build(); //String

@@ -26,6 +26,8 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
 
     public EricssonInternalTransactionInterceptor() {
         super();
+        getLogger().info(String.format("Initializing %s, version %s, author %s, build date: %s", this.getClass().getCanonicalName(), MetaData.VERSION, MetaData.GECOS, MetaData.BUILDTIMESTAMP));
+
         snapshotDatascopeOnly = new HashSet<DataScope>();
         snapshotDatascopeOnly.add(DataScope.SNAPSHOTS);
 
