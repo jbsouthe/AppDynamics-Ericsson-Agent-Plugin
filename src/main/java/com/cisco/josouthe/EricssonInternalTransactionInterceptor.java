@@ -91,9 +91,9 @@ public class EricssonInternalTransactionInterceptor extends AGenericInterceptor 
 
 
                 if (isFakeTransaction(transaction)) { //this object was not marked for handoff? log it
-                    getLogger().debug(String.format("WARNING: We intercepted an implementation of an %s that was NOT marked for handoff? %s %s.%s()", params[0], className, methodName));
+                    getLogger().debug(String.format("WARNING: We intercepted an implementation of an %s that was NOT marked for handoff? %s %s.%s()", objectIntercepted, params[0], className, methodName));
                 } else { //this is what we hope for, and means we are starting a segment of a BT after an async handoff
-                    getLogger().debug(String.format("We intercepted an implementation of an %s that was marked for handoff! transaction segment guid: %s, %s %s.%s()", transaction.getUniqueIdentifier(), params[0], className, methodName));
+                    getLogger().debug(String.format("We intercepted an implementation of an %s that was marked for handoff! transaction segment guid: %s, %s %s.%s()", objectIntercepted, transaction.getUniqueIdentifier(), params[0], className, methodName));
 
                     String fqid = getReflectiveString(params[0], getFQId, "FQID-UNKNOWN");
                     Object myState = getReflectiveObject(params[0], transactionState);
