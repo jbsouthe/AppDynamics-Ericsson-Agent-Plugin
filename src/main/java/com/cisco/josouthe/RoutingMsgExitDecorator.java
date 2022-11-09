@@ -19,7 +19,7 @@ public class RoutingMsgExitDecorator extends AExit {
         super();
         getLogger().info(String.format("Initializing %s, version %s, author %s, build date: %s", this.getClass().getCanonicalName(), MetaData.VERSION, MetaData.GECOS, MetaData.BUILDTIMESTAMP));
 
-        writeIndex = getNewReflectionBuilder().invokeInstanceMethod("writeIndex", true, new String[]{"I"}).build(); //param[0]=integer (1) returns void
+        writeIndex = getNewReflectionBuilder().invokeInstanceMethod("writeIndex", true, new String[]{int.class.getCanonicalName()}).build(); //param[0]=integer (1) returns void
         writeString = getNewReflectionBuilder().invokeInstanceMethod("writeString", true, new String[]{String.class.getCanonicalName()}).build(); //param[0]=String (singularityHeader) returns void
     }
 
