@@ -50,15 +50,15 @@ public class RoutingMsgEntryDecorator extends AEntry {
             }
          */
 
-        /* technique number 1 is to just use the resolving decoder and allow the method above to reset it after it is read,
-
+        /* test number 1 is to just use the resolving decoder and allow the method above to reset it after it is read,
+        Test #2:
         if that fails let's uncomment this next line and just use the decoder in the raw, which seems to skip schema validation:
         resolvingDecoder = getDecoderWithoutResolver.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
         */
 
 
         try {
-            Object[] fieldOrder = (Object[]) readFieldOrderIfDiff.execute(invokedObject.getClass().getClassLoader(), readFieldOrderIfDiff);
+            Object[] fieldOrder = (Object[]) readFieldOrderIfDiff.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
             Integer messageId = (Integer) readInt.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
             Integer schema = null;
             if( fieldOrder == null ) {
@@ -107,7 +107,7 @@ public class RoutingMsgEntryDecorator extends AEntry {
             transactionContext = (String) readString.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
         }
 
-        /*if that also fails for any number of reasons, we can assume that the ResolvingDecoder is not resetting, confirms data read matches the schema and the read is destructive,
+        /*Test #3: if that also fails for any number of reasons, we can assume that the ResolvingDecoder is not resetting, confirms data read matches the schema and the read is destructive,
         this means we need to fall through all this and at the end of it we will need to use the builder to make a new decoder for the program to read.
         in reading the avro source, this is HIGHLY unlikely so we can assume all that is not needed.
 
@@ -124,6 +124,79 @@ public class RoutingMsgEntryDecorator extends AEntry {
         getLogger().info(String.format("We found a RoutingMsg tried to get correlation string, got '%s' from index value %d, this took %d ms", transactionContext, indexValue, System.currentTimeMillis()-startTimestamp));
         return transactionContext;
     }
+
+    /* Test #4:
+    @Override
+    public String unmarshalTransactionContext(Object invokedObject, String className, String methodName, Object[] paramValues, ISDKUserContext context) throws ReflectorException {
+        Object resolvingDecoder = paramValues[0]; // https://avro.apache.org/docs/1.9.2/api/java/org/apache/avro/io/ResolvingDecoder.html
+        long startTimestamp = System.currentTimeMillis();
+
+        Object decoder = getDecoderWithoutResolver.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
+
+
+        try {
+            Object[] fieldOrder = (Object[]) readFieldOrderIfDiff.execute(invokedObject.getClass().getClassLoader(), decoder);
+            Integer messageId = (Integer) readInt.execute(invokedObject.getClass().getClassLoader(), decoder);
+            Integer schema = null;
+            if( fieldOrder == null ) {
+                if( readIndex(decoder) != 1 ) {
+                    readNull(decoder);
+                } else {
+                    schema = readInt(decoder);
+                }
+                if( readIndex(decoder) != 1 ) {
+                    readNull(decoder);
+                } else {
+                    skipBytes.execute(invokedObject.getClass().getClassLoader(), decoder); //we are going to skip reading the message, since we don't want to use it
+                }
+            } else { //read using the field order; just copying logic, not sure how the message comes in, order should be maintained as per javadoc, but YMMV
+                for(int i=0; i<3; i++)
+                    switch ( (Integer) pos.execute(invokedObject.getClass().getClassLoader(), fieldOrder[i]) ) {
+                        case 0: { break; } //already read the message id above
+                        case 1: {
+                            if( readIndex(decoder) != 1 ) {
+                                readNull(decoder);
+                            } else {
+                                schema = readInt(decoder);
+                            }
+                            break;
+                        }
+                        case 2: {
+                            if( readIndex(decoder) != 1 ) {
+                                readNull(decoder);
+                            } else {
+                                skipBytes.execute(invokedObject.getClass().getClassLoader(), decoder); //we are going to skip reading the message, since we don't want to use it
+                            }
+                            break;
+                        }
+                    }
+            }
+            context.stashObject("messageId", messageId);
+            context.stashObject("schema", schema);
+        } catch ( ReflectorException reflectorException ) {
+            getLogger().info(String.format("Oops, while trying to use a ResolvingDecoder, we had an exception, '%s'",reflectorException), reflectorException);
+            throw reflectorException;
+        }
+
+        String transactionContext = null;
+        Integer indexValue = (Integer) readIndex.execute(invokedObject.getClass().getClassLoader(), decoder);
+        if( indexValue == 1 ) {
+            transactionContext = (String) readString.execute(invokedObject.getClass().getClassLoader(), decoder);
+        }
+
+
+        try {
+            Object backupDecoder = getBackupDecoder.execute(resolvingDecoder.getClass().getClassLoader(), resolvingDecoder);
+            configure.execute(resolvingDecoder.getClass().getClassLoader(), resolvingDecoder, new Object[]{ backupDecoder });
+        } catch ( ReflectorException reflectorException ) {
+            getLogger().info(String.format("Oops, while trying to reset the internal decoder, we had an exception, '%s'",reflectorException), reflectorException);
+            throw reflectorException;
+        }
+
+        getLogger().info(String.format("We found a RoutingMsg tried to get correlation string, got '%s' from index value %d, this took %d ms", transactionContext, indexValue, System.currentTimeMillis()-startTimestamp));
+        return transactionContext;
+    }
+    */
 
     private int readIndex(Object resolvingDecoder) throws ReflectorException {
         return (Integer) readIndex.execute(resolvingDecoder.getClass().getClassLoader(), resolvingDecoder);
