@@ -41,6 +41,7 @@ public class RoutingMsgEntryDecorator extends AEntry {
 
         Object decoder = getDecoderWithoutResolver.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
 
+        /*
         try {
             Object[] fieldOrder = (Object[]) readFieldOrderIfDiff.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
             Integer messageId = (Integer) readInt.execute(invokedObject.getClass().getClassLoader(), decoder);
@@ -85,6 +86,7 @@ public class RoutingMsgEntryDecorator extends AEntry {
             restoreBackup(resolvingDecoder);
             throw reflectorException;
         }
+         */
 
         String transactionContext = null;
         Integer indexValue;
@@ -140,7 +142,7 @@ public class RoutingMsgEntryDecorator extends AEntry {
 
     @Override
     public boolean isCorrelationEnabledForOnMethodBegin() {
-        return true;
+        return false;
     }
 
     @Override
