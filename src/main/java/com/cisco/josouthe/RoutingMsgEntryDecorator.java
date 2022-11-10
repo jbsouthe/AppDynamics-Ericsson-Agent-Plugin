@@ -45,6 +45,18 @@ public class RoutingMsgEntryDecorator extends AEntry {
             Object[] fieldOrder = (Object[]) readFieldOrderIfDiff.execute(invokedObject.getClass().getClassLoader(), resolvingDecoder);
             Integer messageId = (Integer) readInt.execute(invokedObject.getClass().getClassLoader(), decoder);
             Integer schema = null;
+            if( fieldOrder == null ) {
+                if( readIndex(decoder) != 1 ) {
+                    readNull(decoder);
+                } else {
+                    schema = readInt(decoder);
+                }
+                if( readIndex(decoder) != 1 ) {
+                    readNull(decoder);
+                } else {
+                    skipBytes.execute(invokedObject.getClass().getClassLoader(), decoder); //we are going to skip reading the message, since we don't want to use it
+                }
+            } else {
                 for(int i=0; i<3; i++)
                     switch ( (Integer) pos.execute(invokedObject.getClass().getClassLoader(), fieldOrder[i]) ) {
                         case 0: { break; } //already read the message id above
@@ -65,9 +77,10 @@ public class RoutingMsgEntryDecorator extends AEntry {
                             break;
                         }
                     }
+            }
             context.stashObject("messageId", messageId);
             context.stashObject("schema", schema);
-        } catch ( ReflectorException reflectorException ) {
+        } catch ( Exception reflectorException ) {
             getLogger().info(String.format("Oops, while trying to use a ResolvingDecoder, we had an exception, '%s'",reflectorException), reflectorException);
             restoreBackup(resolvingDecoder);
             throw reflectorException;
