@@ -30,7 +30,7 @@ public class RoutingMsgExitDecorator extends AExit {
             Object returnValue, ISDKUserContext context) {
         Object encoder = paramValues[0]; // https://avro.apache.org/docs/1.9.2/api/java/org/apache/avro/io/Encoder.html
         try {
-            writeIndex.execute(invokedObject.getClass().getClassLoader(), encoder, new Object[] { 1 });
+            writeIndex.execute(invokedObject.getClass().getClassLoader(), encoder, new Object[] { 99 });
             writeString.execute(invokedObject.getClass().getClassLoader(), encoder, new Object[] { transactionContext });
             getLogger().info(String.format("Succeeded in writing correlation string '%s' to encoder", transactionContext));
         } catch (ReflectorException e) {
@@ -52,7 +52,7 @@ public class RoutingMsgExitDecorator extends AExit {
 
     @Override
     public boolean isCorrelationEnabledForOnMethodBegin() {
-        return true;
+        return false;
     }
 
     @Override

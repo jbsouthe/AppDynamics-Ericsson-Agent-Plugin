@@ -92,7 +92,7 @@ public class RoutingMsgEntryDecorator extends AEntry {
         Integer indexValue;
         try {
             indexValue = (Integer) readIndex.execute(invokedObject.getClass().getClassLoader(), decoder);
-            if (indexValue == 1) {
+            if (indexValue == 99) {
                 transactionContext = (String) readString.execute(invokedObject.getClass().getClassLoader(), decoder);
             }
         } catch( ReflectorException reflectorException ) {
@@ -142,7 +142,7 @@ public class RoutingMsgEntryDecorator extends AEntry {
 
     @Override
     public boolean isCorrelationEnabledForOnMethodBegin() {
-        return false;
+        return true;
     }
 
     @Override
