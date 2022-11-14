@@ -94,12 +94,13 @@ public class RoutingMsgEntryDecorator extends AEntry {
             indexValue = (Integer) readIndex.execute(invokedObject.getClass().getClassLoader(), decoder);
             if (indexValue == 99) {
                 transactionContext = (String) readString.execute(invokedObject.getClass().getClassLoader(), decoder);
+            } else {
+                restoreBackup(resolvingDecoder);
             }
         } catch( ReflectorException reflectorException ) {
             getLogger().info(String.format("Oops, while trying to read a correlation header, we had an exception, '%s'",reflectorException), reflectorException);
-            throw reflectorException;
-        } finally {
             restoreBackup(resolvingDecoder);
+            throw reflectorException;
         }
 
         getLogger().info(String.format("We found a RoutingMsg tried to get correlation string, got '%s' from index value %d, this took %d ms", transactionContext, indexValue, System.currentTimeMillis()-startTimestamp));
