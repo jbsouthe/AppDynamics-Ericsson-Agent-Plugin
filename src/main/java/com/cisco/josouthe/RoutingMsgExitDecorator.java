@@ -52,7 +52,7 @@ public class RoutingMsgExitDecorator extends AExit {
 
     @Override
     public boolean isCorrelationEnabledForOnMethodBegin() {
-        return false;
+        return true;
     }
 
     @Override
